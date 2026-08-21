@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: metatax-account
+    runtime: node
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true

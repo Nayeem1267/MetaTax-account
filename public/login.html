@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f1ea">
+  <title>Sign in · MetaTax Account</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/login.css">
+</head>
+<body>
+  <section class="login-screen">
+    <div class="login-brand"><span class="brand-mark">M</span><span>MetaTax</span></div>
+    <div class="login-layout">
+      <div class="login-intro"><p class="eyebrow">YOUR TAX WORKSPACE</p><h1>Keep every bill<br><em>in its place.</em></h1><p>Upload company records, stay on top of your deadlines, and make your next tax return feel wonderfully straightforward.</p><div class="login-note"><span>✦</span><strong>Everything ready when you are.</strong></div></div>
+      <form class="login-card" id="login-form"><div class="login-card-heading"><p class="eyebrow">WELCOME BACK</p><h2>Sign in to MetaTax</h2><p>Enter your account details to continue.</p></div><label>Username<input name="username" type="text" autocomplete="username" placeholder="Enter your username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required></label><button class="primary-button login-button" type="submit">Continue <span>→</span></button><p class="login-message" id="login-message" role="alert"></p><small class="login-security">⌁ Your workspace is private and secure</small></form>
+    </div>
+    <footer>MetaTax Account <span>·</span> Built for calm, organised tax filing</footer>
+  </section>
+  <script src="/login.js"></script>
+</body>
+</html>
