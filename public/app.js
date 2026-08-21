@@ -6,7 +6,7 @@ const formMessage = document.querySelector('#form-message');
 const documentsBody = document.querySelector('#documents-body');
 let documents = [];
 const maxDocuments = 2;
-let itrFiled = localStorage.getItem('metatax_itr_filed') === 'true';
+let itrFiled = false;
 
 function updateMalaysiaGreeting() {
   const now = new Date();
@@ -44,6 +44,10 @@ document.querySelector('#companies-link').addEventListener('click', (event) => {
 document.querySelector('#settings-button').addEventListener('click', () => openModal('WORKSPACE SETTINGS', 'Account settings', '<p class="modal-copy">Your workspace is configured for a Malaysian company account.</p><ul class="modal-list"><li><span>✓</span> Malaysian Ringgit (RM) reporting</li><li><span>✓</span> FY 2026–27 financial year</li><li><span>✓</span> Secure document storage enabled</li></ul><div class="notice">Settings are ready for this workspace. Contact your accountant to change filing details.</div>'));
 document.querySelector('#notifications-button').addEventListener('click', () => openModal('NOTIFICATIONS', 'You\'re all caught up', '<div class="notice">There are no new notifications. Uploaded bills will appear here.</div>'));
 function openItrChecklist() {
+  if (itrFiled) {
+    openModal('TAX RETURN', 'ITR already filed', '<div class="notice">✓ Your ITR has been filed successfully. This workspace is now read-only and documents can no longer be uploaded or deleted.</div>');
+    return;
+  }
   openModal('TAX RETURN', 'IT return checklist', '<p class="modal-copy">A quick view of what remains before your 30 September 2027 filing deadline.</p><ul class="modal-list"><li><span>✓</span> Company details are complete</li><li><span>2</span> Upload up to 2 business documents</li><li><span>3</span> Submit the IT return</li></ul><button class="modal-action" id="file-itr-button" type="button">File ITR →</button>');
 }
 
@@ -60,12 +64,21 @@ modalContent.addEventListener('click', async (event) => {
   if (event.target.id === 'send-invite') document.querySelector('#invite-message').textContent = 'Invitation ready to send from your accountant settings.';
   if (event.target.id === 'file-itr-button') openItrSubmission();
   if (event.target.id === 'verify-itr-button') {
-    const itrAmount = documents.reduce((total, item) => total + (Number(item.amount) || 0), 0);
-    itrFiled = true;
-    localStorage.setItem('metatax_itr_filed', 'true');
-    document.querySelector('#itr-total').textContent = formatAmount(itrAmount);
-    document.querySelector('#itr-status').textContent = 'Filed successfully';
-    openModal('ITR SUBMISSION', 'Successfully uploaded', '<div class="notice">✓ Your ITR was uploaded successfully for FY 2026–27.</div>');
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = 'Filing...';
+    try {
+      const response = await fetch('/api/itr/file', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      itrFiled = true;
+      renderDocuments();
+      openModal('ITR SUBMISSION', 'Successfully filed', '<div class="notice">✓ Your ITR was filed successfully for FY 2026–27. This workspace is now read-only. Documents can no longer be uploaded or deleted.</div>');
+    } catch (error) {
+      document.querySelector('#otp-message').textContent = error.message;
+      button.disabled = false;
+      button.textContent = 'Verify and file ITR →';
+    }
   }
 });
 document.querySelector('#modal-close').addEventListener('click', closeModal);
@@ -105,13 +118,13 @@ function updateSummary() {
   document.querySelector('#purchase-total').textContent = formatAmount(purchaseTotal);
   document.querySelector('#sales-total').textContent = formatAmount(salesTotal);
   document.querySelector('#itr-total').textContent = itrFiled ? formatAmount(itrAmount) : 'RM 0.00';
-  document.querySelector('#itr-status').textContent = itrFiled ? 'Filed successfully' : 'Not filed yet';
+  document.querySelector('#itr-status').textContent = itrFiled ? 'Filed successfully · Read-only' : 'Not filed yet';
   document.querySelector('#documents-status').textContent = `${Math.min(count, maxDocuments)} / ${maxDocuments}`;
   document.querySelector('#documents-check').textContent = count >= maxDocuments ? '✓' : '2';
   document.querySelector('#documents-check').classList.toggle('done', count >= maxDocuments);
   const uploadButton = document.querySelector('#submit-button');
-  uploadButton.disabled = count >= maxDocuments;
-  uploadButton.innerHTML = count >= maxDocuments ? 'Document limit reached' : 'Upload document <span>↑</span>';
+  uploadButton.disabled = itrFiled || count >= maxDocuments;
+  uploadButton.innerHTML = itrFiled ? 'Workspace locked' : count >= maxDocuments ? 'Document limit reached' : 'Upload document <span>↑</span>';
   const ring = document.querySelector('.progress-ring');
   ring.style.background = `conic-gradient(var(--green) ${readiness * 3.6}deg, #e6ebe5 ${readiness * 3.6}deg)`;
 }
@@ -120,7 +133,7 @@ function renderDocuments() {
   const query = document.querySelector('#search-input').value.toLowerCase();
   const filter = document.querySelector('#filter-select').value;
   const visible = documents.filter((item) => item.name.toLowerCase().includes(query) && (filter === 'all' || item.category === filter));
-  documentsBody.innerHTML = visible.length ? visible.map((item) => `<tr><td><div class="document-name"><span class="file-icon">▤</span><span>${item.name}<small>${formatSize(item.size)}</small></span></div></td><td>${item.company}</td><td>${item.category}</td><td class="amount-cell">${formatAmount(item.amount)}</td><td>${formatDate(item.uploadedAt)}</td><td><span class="status">${item.status}</span></td><td><button class="delete-button" data-id="${item.id}" aria-label="Delete ${item.name}">×</button></td></tr>`).join('') : '<tr><td colspan="7" class="empty-state">No matching documents found.</td></tr>';
+  documentsBody.innerHTML = visible.length ? visible.map((item) => `<tr><td><div class="document-name"><span class="file-icon">▤</span><span>${item.name}<small>${formatSize(item.size)}</small></span></div></td><td>${item.company}</td><td>${item.category}</td><td class="amount-cell">${formatAmount(item.amount)}</td><td>${formatDate(item.uploadedAt)}</td><td><span class="status">${item.status}</span></td><td>${itrFiled ? '<span class="locked-action">Locked</span>' : `<button class="delete-button" data-id="${item.id}" aria-label="Delete ${item.name}">×</button>`}</td></tr>`).join('') : '<tr><td colspan="7" class="empty-state">No matching documents found.</td></tr>';
   updateSummary();
 }
 
@@ -137,6 +150,11 @@ async function loadDocuments() {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!fileInput.files[0]) { formMessage.textContent = 'Choose a bill before uploading.'; return; }
+  if (itrFiled) {
+    formMessage.textContent = 'This workspace is locked because the ITR has already been filed.';
+    formMessage.style.color = '#c06342';
+    return;
+  }
   if (documents.length >= maxDocuments) {
     formMessage.textContent = `You can upload up to ${maxDocuments} documents.`;
     formMessage.style.color = '#c06342';
@@ -186,5 +204,8 @@ documentsBody.addEventListener('click', async (event) => {
 
 fetch('/api/session')
   .then((response) => response.ok ? response.json() : Promise.reject(new Error('Not authenticated')))
-  .then(() => loadDocuments())
+  .then((session) => {
+    itrFiled = Boolean(session.workspace?.itrFiled);
+    return loadDocuments();
+  })
   .catch(() => window.location.replace('/login'));

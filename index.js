@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const DOCUMENTS_FILE = path.join(DATA_DIR, 'documents.json');
+const WORKSPACE_STATE_FILE = path.join(DATA_DIR, 'workspace.json');
 const LOGIN_USERNAME = process.env.METATAX_USERNAME || 'Asmirameta';
 const LOGIN_PASSWORD = process.env.METATAX_PASSWORD || 'Meta@0310';
 const OTP_PHONE = process.env.METATAX_OTP_PHONE || '+917029901424';
@@ -33,6 +34,7 @@ const allowedMimeTypes = new Set([
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 if (!fs.existsSync(DOCUMENTS_FILE)) fs.writeFileSync(DOCUMENTS_FILE, '[]');
+if (!fs.existsSync(WORKSPACE_STATE_FILE)) fs.writeFileSync(WORKSPACE_STATE_FILE, JSON.stringify({ itrFiled: false, itrFiledAt: null }, null, 2));
 
 const storage = multer.diskStorage({
   destination: (_req, _file, callback) => callback(null, UPLOAD_DIR),
@@ -52,6 +54,8 @@ const upload = multer({
 
 const readDocuments = () => JSON.parse(fs.readFileSync(DOCUMENTS_FILE, 'utf8'));
 const writeDocuments = (documents) => fs.writeFileSync(DOCUMENTS_FILE, JSON.stringify(documents, null, 2));
+const readWorkspace = () => JSON.parse(fs.readFileSync(WORKSPACE_STATE_FILE, 'utf8'));
+const writeWorkspace = (workspace) => fs.writeFileSync(WORKSPACE_STATE_FILE, JSON.stringify(workspace, null, 2));
 const templateColumns = ['Bill Type', 'Company', 'Invoice Number', 'Invoice Date', 'Supplier / Customer Name', 'Supplier / Customer TIN', 'Supplier / Customer BRN', 'Description', 'Amount (RM)', 'Tax Rate (%)', 'Tax (RM)', 'Total (RM)', 'Payment Date', 'Notes'];
 const templateRows = [
   { 'Bill Type': 'Purchase', Company: 'Meta Platforms', 'Invoice Number': 'PUR-001', 'Invoice Date': '2026-08-21', 'Supplier / Customer Name': 'Supplier name', 'Supplier / Customer TIN': 'Enter TIN', 'Supplier / Customer BRN': 'Enter BRN', Description: 'Office supplies', 'Amount (RM)': 100, 'Tax Rate (%)': 0, 'Tax (RM)': 0, 'Total (RM)': 100, 'Payment Date': '2026-08-21', Notes: 'Example row - replace or remove' },
@@ -155,7 +159,7 @@ app.post('/api/login', (req, res) => {
 app.get('/api/session', (req, res) => {
   const session = sessions.get(req.headers.cookie?.split(';').map((part) => part.trim()).find((part) => part.startsWith('metatax_session='))?.split('=')[1]);
   if (!session) return res.status(401).json({ authenticated: false });
-  res.json({ authenticated: true, username: session.username });
+  res.json({ authenticated: true, username: session.username, workspace: readWorkspace() });
 });
 
 app.post('/api/logout', (req, res) => {
@@ -173,6 +177,10 @@ const requireAuth = (req, res, next) => {
 
 const getSessionToken = (req) => req.headers.cookie?.split(';').map((part) => part.trim()).find((part) => part.startsWith('metatax_session='))?.split('=')[1];
 const maskPhone = (phone) => `${phone.slice(0, 3)} ******${phone.slice(-4)}`;
+const requireEditableWorkspace = (_req, res, next) => {
+  if (readWorkspace().itrFiled) return res.status(423).json({ error: 'This workspace is locked because the ITR has already been filed.' });
+  next();
+};
 
 app.post('/api/itr/request-otp', requireAuth, async (req, res) => {
   const challengeId = crypto.randomBytes(16).toString('hex');
@@ -190,11 +198,21 @@ app.post('/api/itr/request-otp', requireAuth, async (req, res) => {
 });
 
 app.post('/api/itr/verify-otp', requireAuth, (req, res) => {
+  if (readWorkspace().itrFiled) return res.status(423).json({ error: 'This workspace is already locked because the ITR has been filed.' });
   const challenge = itrChallenges.get(req.body.challengeId);
   if (!challenge || challenge.sessionToken !== getSessionToken(req) || challenge.expiresAt < Date.now()) return res.status(400).json({ error: 'This OTP has expired. Request a new code.' });
   if (req.body.otp !== challenge.otp) return res.status(401).json({ error: 'Incorrect OTP. Please check the code and try again.' });
   itrChallenges.delete(req.body.challengeId);
+  writeWorkspace({ itrFiled: true, itrFiledAt: new Date().toISOString() });
   res.json({ success: true, message: 'ITR uploaded successfully.' });
+});
+
+app.post('/api/itr/file', requireAuth, (req, res) => {
+  const workspace = readWorkspace();
+  if (workspace.itrFiled) return res.status(423).json({ error: 'This workspace is already locked because the ITR has been filed.' });
+  const filedAt = new Date().toISOString();
+  writeWorkspace({ itrFiled: true, itrFiledAt: filedAt });
+  res.json({ success: true, message: 'ITR filed successfully.', itrFiledAt: filedAt });
 });
 
 app.get('/api/documents', requireAuth, (req, res) => {
@@ -202,7 +220,7 @@ app.get('/api/documents', requireAuth, (req, res) => {
   res.json(documents);
 });
 
-app.post('/api/documents', requireAuth, upload.single('file'), (req, res) => {
+app.post('/api/documents', requireAuth, requireEditableWorkspace, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Please upload a supported file.' });
   const documents = readDocuments();
   if (documents.length >= MAX_DOCUMENTS) {
@@ -232,7 +250,7 @@ app.post('/api/documents', requireAuth, upload.single('file'), (req, res) => {
   res.status(201).json(document);
 });
 
-app.delete('/api/documents/:id', requireAuth, (req, res) => {
+app.delete('/api/documents/:id', requireAuth, requireEditableWorkspace, (req, res) => {
   const documents = readDocuments();
   const document = documents.find((item) => item.id === req.params.id);
   if (!document) return res.status(404).json({ error: 'Document not found.' });
