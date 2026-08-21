@@ -5,6 +5,7 @@ const selectedFile = document.querySelector('#selected-file');
 const formMessage = document.querySelector('#form-message');
 const documentsBody = document.querySelector('#documents-body');
 let documents = [];
+const maxDocuments = 2;
 let itrFiled = localStorage.getItem('metatax_itr_filed') === 'true';
 
 function updateMalaysiaGreeting() {
@@ -43,7 +44,7 @@ document.querySelector('#companies-link').addEventListener('click', (event) => {
 document.querySelector('#settings-button').addEventListener('click', () => openModal('WORKSPACE SETTINGS', 'Account settings', '<p class="modal-copy">Your workspace is configured for a Malaysian company account.</p><ul class="modal-list"><li><span>✓</span> Malaysian Ringgit (RM) reporting</li><li><span>✓</span> FY 2026–27 financial year</li><li><span>✓</span> Secure document storage enabled</li></ul><div class="notice">Settings are ready for this workspace. Contact your accountant to change filing details.</div>'));
 document.querySelector('#notifications-button').addEventListener('click', () => openModal('NOTIFICATIONS', 'You\'re all caught up', '<div class="notice">There are no new notifications. Uploaded bills will appear here.</div>'));
 function openItrChecklist() {
-  openModal('TAX RETURN', 'IT return checklist', '<p class="modal-copy">A quick view of what remains before your 30 September 2027 filing deadline.</p><ul class="modal-list"><li><span>✓</span> Company details are complete</li><li><span>2</span> Upload at least 5 business documents</li><li><span>3</span> Submit the IT return</li></ul><button class="modal-action" id="file-itr-button" type="button">File ITR →</button>');
+  openModal('TAX RETURN', 'IT return checklist', '<p class="modal-copy">A quick view of what remains before your 30 September 2027 filing deadline.</p><ul class="modal-list"><li><span>✓</span> Company details are complete</li><li><span>2</span> Upload up to 2 business documents</li><li><span>3</span> Submit the IT return</li></ul><button class="modal-action" id="file-itr-button" type="button">File ITR →</button>');
 }
 
 function openItrSubmission() {
@@ -95,7 +96,7 @@ function updateSummary() {
   const purchaseTotal = documents.filter((item) => item.category === 'Purchase invoice').reduce((total, item) => total + (Number(item.amount) || 0), 0);
   const salesTotal = documents.filter((item) => item.category === 'Sales invoice').reduce((total, item) => total + (Number(item.amount) || 0), 0);
   const itrAmount = purchaseTotal + salesTotal;
-  const readiness = Math.min(100, Math.round((count / 5) * 100));
+  const readiness = Math.min(100, Math.round((count / maxDocuments) * 100));
   document.querySelector('#total-documents').textContent = count;
   document.querySelector('#readiness').textContent = `${readiness}%`;
   document.querySelector('#ring-value').textContent = `${readiness}%`;
@@ -105,9 +106,12 @@ function updateSummary() {
   document.querySelector('#sales-total').textContent = formatAmount(salesTotal);
   document.querySelector('#itr-total').textContent = itrFiled ? formatAmount(itrAmount) : 'RM 0.00';
   document.querySelector('#itr-status').textContent = itrFiled ? 'Filed successfully' : 'Not filed yet';
-  document.querySelector('#documents-status').textContent = `${Math.min(count, 5)} / 5`;
-  document.querySelector('#documents-check').textContent = count >= 5 ? '✓' : '2';
-  document.querySelector('#documents-check').classList.toggle('done', count >= 5);
+  document.querySelector('#documents-status').textContent = `${Math.min(count, maxDocuments)} / ${maxDocuments}`;
+  document.querySelector('#documents-check').textContent = count >= maxDocuments ? '✓' : '2';
+  document.querySelector('#documents-check').classList.toggle('done', count >= maxDocuments);
+  const uploadButton = document.querySelector('#submit-button');
+  uploadButton.disabled = count >= maxDocuments;
+  uploadButton.innerHTML = count >= maxDocuments ? 'Document limit reached' : 'Upload document <span>↑</span>';
   const ring = document.querySelector('.progress-ring');
   ring.style.background = `conic-gradient(var(--green) ${readiness * 3.6}deg, #e6ebe5 ${readiness * 3.6}deg)`;
 }
@@ -133,6 +137,11 @@ async function loadDocuments() {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!fileInput.files[0]) { formMessage.textContent = 'Choose a bill before uploading.'; return; }
+  if (documents.length >= maxDocuments) {
+    formMessage.textContent = `You can upload up to ${maxDocuments} documents.`;
+    formMessage.style.color = '#c06342';
+    return;
+  }
   const button = document.querySelector('#submit-button');
   button.disabled = true;
   button.textContent = 'Uploading...';
@@ -151,7 +160,7 @@ form.addEventListener('submit', async (event) => {
     formMessage.style.color = '#c06342';
   } finally {
     button.disabled = false;
-    button.innerHTML = 'Upload document <span>↑</span>';
+    button.innerHTML = documents.length >= maxDocuments ? 'Document limit reached' : 'Upload document <span>↑</span>';
   }
 });
 

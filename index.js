@@ -16,6 +16,7 @@ const LOGIN_USERNAME = process.env.METATAX_USERNAME || 'Asmirameta';
 const LOGIN_PASSWORD = process.env.METATAX_PASSWORD || 'Meta@0310';
 const OTP_PHONE = process.env.METATAX_OTP_PHONE || '+917029901424';
 const OTP_EMAIL = process.env.METATAX_OTP_EMAIL || 'MetaCashAudit@outlook.com';
+const MAX_DOCUMENTS = 2;
 const sessions = new Map();
 const itrChallenges = new Map();
 const mailTransport = process.env.SMTP_USER && process.env.SMTP_PASSWORD
@@ -203,6 +204,11 @@ app.get('/api/documents', requireAuth, (req, res) => {
 
 app.post('/api/documents', requireAuth, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Please upload a supported file.' });
+  const documents = readDocuments();
+  if (documents.length >= MAX_DOCUMENTS) {
+    fs.unlinkSync(req.file.path);
+    return res.status(409).json({ error: `You can upload up to ${MAX_DOCUMENTS} documents.` });
+  }
   const amount = req.body.amount === '' || req.body.amount === undefined ? 0 : Number(req.body.amount);
   if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: 'Amount must be a valid positive number.' });
 
@@ -221,7 +227,6 @@ app.post('/api/documents', requireAuth, upload.single('file'), (req, res) => {
     uploadedAt: new Date().toISOString()
   };
 
-  const documents = readDocuments();
   documents.push(document);
   writeDocuments(documents);
   res.status(201).json(document);
